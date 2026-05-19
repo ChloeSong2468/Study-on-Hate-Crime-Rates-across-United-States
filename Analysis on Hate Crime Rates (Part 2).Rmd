@@ -1,0 +1,192 @@
+---
+title: "Analysis on Hate Crime Rates Across the U.S. (Part 2)"
+author: "Chloe Song"
+output:
+  pdf_document:
+    latex_engine: xelatex
+    number_sections: true
+  word_document: default
+fontsize: 11pt
+geometry: margin=1in
+---
+GitHub Repository: https://github.com/ChloeSong2468/Study-on-Hate-Crime-Rates-across-United-States
+
+```{r setup, include=FALSE}
+#load  packages
+library(tidyverse)
+```
+
+```{r load_data, include=FALSE}
+#source: https://github.com/fivethirtyeight/data/blob/master/hate-crimes/hate_crimes.csv
+#load dataset
+hate_crimes <- read_csv("hate_crimes.csv")
+
+#remove rows missing the SPLC hate crime rate, add abbrev
+hc <- hate_crimes %>%
+  filter(!is.na(hate_crimes_per_100k_splc)) %>%
+  mutate(
+    state_abbrev = state.abb[match(state, state.name)],
+    state_abbrev = ifelse(state == "District of Columbia", "DC", state_abbrev)
+  )
+```
+
+# Introduction
+
+Hate crimes are a serious concern across the United States, and understanding what
+socioeconomic factors are linked to them can help inform our policies. This project
+looks into whether states with higher median household incomes have different hate crime
+rates than states with lower median household incomes. The research question is: 
+
+“Is the distribution of hate crime rates different between states with above-median household income and states with below-median household income?”
+
+In Part 1, the EDA showed that the hate crime rate is right-skewed across the
+states, with some high rate outliers pulling the mean above the median. Somewhat
+surprisingly, the correlation between median household income and hate crime rate was weakly
+positive (r = 0.351), suggesting that states with higher income do not tend to have lower hate
+crime rates. This report tests whether that difference is statistically significant.
+
+# Methods
+
+## Test Selection
+
+To answer the research question, we use a Wilcoxon rank-sum test. States are split 
+into two groups based on whether their median household income is above or below the 
+median income across all states. The test compares the distribution of hate crime rates 
+between these two groups.
+
+```{r group_creation, echo = FALSE}
+#compute the median household income across all states
+median_income <- median(hc$median_household_income, na.rm = TRUE)
+
+#make income group variable: above or below median income
+hc <- hc %>%
+  mutate(income_group = ifelse(median_household_income >= median_income,
+                               "Above Median", "Below Median"))
+
+#check group sizes
+table(hc$income_group)
+```
+
+The Wilcoxon rank-sum test is appropriate here because:
+1. We are comparing a continuous outcome (hate crime rate) across two independent groups
+(above vs. below median income).
+2. The two groups are independent; a state's income group has no influence on another state's.
+3. The test assesses whether one group tends to have systematically higher or lower hate crime
+rates than the other.
+
+
+## Hypotheses
+
+$F_1$ = distribution of hate crime rates for above-median income states
+$F_2$ = distribution of hate crime rates for below-median income states
+
+$$H_0: F_1 = F_2$$
+$$H_a: F_1 \neq F_2$$
+We use a significance level of $\alpha = 0.05$.
+
+
+## Assumption Verification
+
+**1. Independence:** Each observation is a U.S. state. States are independent units; the
+hate crime rate in one state does not directly influence the rate in another.
+
+**2. Continuity:** The hate crime rate is a continuous variable, satisfying this requirement
+for the Wilcoxon rank-sum test.
+
+**3. Similar shape:** The Wilcoxon rank-sum test assumes the two distributions have a roughly
+similar shape. We verify this with density plots.
+
+```{r densityplot, fig.height=3.5, echo = FALSE}
+# Density plots to compare the distribution shape of each group
+ggplot(hc, aes(x = hate_crimes_per_100k_splc, fill = income_group)) +
+  geom_density(alpha = 0.5) +
+  scale_fill_manual(values = c("Above Median" = "dodgerblue2", "Below Median" = "tomato3")) +
+  labs(
+    title = "Distribution of Hate Crime Rate by Income Group",
+    x     = "Hate Crimes per 100,000 (SPLC)",
+    y     = "Density",
+    fill  = "Income Group"
+  ) +
+  theme_minimal()
+```
+
+Both distributions appear right-skewed with similar shapes, satisfying the assumption.
+
+
+# Results
+
+```{r wilcoxon}
+#wilcoxon rank-sum test (two-sided)
+wilcox.test(hate_crimes_per_100k_splc ~ income_group, data = hc)
+```
+
+```{r group_medians, echo = FALSE}
+#summary of median hate crime rate by income group
+hc %>%
+  group_by(income_group) %>%
+  summarise(
+    n      = n(),
+    median = round(median(hate_crimes_per_100k_splc), 3),
+    sd     = round(sd(hate_crimes_per_100k_splc), 3)
+  )
+
+```
+
+The Wilcoxon rank-sum test produced a p-value of 0.027, which is less than $\alpha = 0.05$,
+so the result is statistically significant. States in the above-median income group tended
+to have higher hate crime rates than states in the below-median income group. The test 
+statistic W reflects the number of times a hate crime rate from the above-median group ranked 
+higher than one from the below-median group across all pairwise comparisons.
+
+# Conclusions
+
+## Interpretation
+
+Since the p-value (0.027) is less than $\alpha = 0.05$, we reject the null hypothesis.
+There is sufficient evidence to conclude that the distribution of hate crime rates
+differs significantly between states with above and below median household incomes.
+Interestingly, above-median income states tend to have higher hate crime rates than
+below-median income states; opposite of what we might expect. This likely reflects 
+the under-reporting issue noted earlier, where wealthier states may have stronger 
+infrastructure for reporting hate crimes rather than genuinely experiencing more incidents.
+
+## Limitations
+
+Some limitations are worth noting. First, hate crime statistics are subject to significant
+under-reporting, and reporting rates likely vary systematically by state wealth; this could
+artificially inflate rates in wealthier states and confound our results. Second, splitting states 
+into just two income groups discards information about the continuous nature of income.
+
+## Generalizability
+
+Since the dataset includes 46 U.S. states and D.C. (minus 4 states with missing SPLC
+data), these findings describe the U.S. states included in the data as of the mid-2010s rather
+than a random sample. The 4 missing states are excluded because SPLC did not record hate 
+crime data for them during that time, not because of specific selections that have to do with their income
+levels or hate crime rates. Their absence is unlikely to meaningfully bias the conclusions. 
+
+That said, the results should not be generalized beyond the states included since the data are not 
+based on random sampling. Still, the findings could give insight into how socioeconomic conditions 
+relate to hate crime reporting across big political units, and motivate further investigation using 
+individual or county-level data.
+
+\newpage
+
+# References
+
+Majumder, M. (2017, January 23). *Higher rates of hate crimes are tied to income inequality.*
+FiveThirtyEight. https://fivethirtyeight.com/features/higher-rates-of-hate-crimes-are-tied-to-income-inequality/
+
+FiveThirtyEight. (2017). *Hate crimes data* [Data set]. GitHub.
+https://github.com/fivethirtyeight/data/blob/master/hate-crimes/hate_crimes.csv
+
+Federal Bureau of Investigation. (2016). *Hate crime statistics, 2015.* U.S. Department of
+Justice. https://ucr.fbi.gov/hate-crime/2015
+
+Southern Poverty Law Center. (2016). *Update: Hate incidents in the days following the election.* https://www.splcenter.org/resources/hatewatch/update-incidents-hateful-harassment-election-day-now-number-701
+
+United States Census Bureau. (2016). *American Community Survey 5-year estimates.*
+https://www.census.gov/library/visualizations/interactive/acs-5year-datamap.html
+
+Gemini. (2026, April 19). Response to: "if i excluded 4 states out of 51 (including DC) because of missing data, should i not generalize the findings beyond the states that were included (since the data are not based on random sampling)?" https://gemini.google.com/
+
