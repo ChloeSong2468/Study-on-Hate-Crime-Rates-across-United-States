@@ -1,1 +1,235 @@
+---
+title: "Analysis on Hate Crime Rates Across the U.S. (Part 1)"
+author: "Chloe Song"
+output:
+  pdf_document:
+    latex_engine: xelatex
+    number_sections: true
+  word_document: default
+fontsize: 11pt
+geometry: margin=1in
+---
+GitHub Repository: https://github.com/ChloeSong2468/Study-on-Hate-Crime-Rates-across-United-States
 
+```{r setup, include=FALSE}
+#packages
+library(tidyverse) 
+```
+
+```{r load-data, include=FALSE}
+#load dataset
+#source: https://github.com/fivethirtyeight/data/blob/master/hate-crimes/hate_crimes.csv
+setwd("~/Desktop/STAT 3080")
+hate_crimes <- read_csv("hate_crimes.csv")
+
+#view data
+glimpse(hate_crimes)
+```
+
+# Introduction
+
+Hate crimes in the United States are a troubling social problem. Understanding
+what socioeconomic factors are associated with their prevalence can help policy decisions
+and resource allocation. This project investigates the research question:
+
+"Are states with higher median household incomes or higher rates of high school education
+associated with lower hate crime rates?"
+
+This analysis looks at the relationship between two socioeconomic predictors:
+median household income and the number of adults with at least a high school degree, and
+state level hate crime rates as reported by the FBI. Understanding this can give us an 
+understanding whether economic and educational disparities are linked to the incidence of
+hate crimes in states of America.
+
+# Data Summary
+
+## Source
+The data comes from FiveThirtyEight's GitHub repository, compiled for their 2017 
+article "Higher Rates Of Hate Crimes Are Tied To Income Inequality" by Maimuna Majumder.
+The data set gets information from government / organizational sources:
+
+Hate crime rates are drawn from FBI Hate Crime Statistics (2010-2015 average) and the
+Southern Poverty Law Center (SPLC, November 2016).
+Socioeconomic variables (income, education, unemployment) are from the
+U.S. Census Bureau's American Community Survey (ACS).
+
+The unit of observation is the U.S. state (and DC), giving 51 observations. 
+Since all 50 states and DC are represented, the data make up a population of 
+U.S. states rather than a sample. Inferences from this data set describe 
+patterns across all U.S. states and DC as of the mid 2010s.
+
+## Variables of Interest
+
+3 primary variables used in this analysis are:
+
+-hate_crimes_per_100k_splc (hate crimes per 100,000 population)
+-median_household_income (median household income) 
+-share_population_with_high_school_degree (share of adults 25+ with at least a high
+school diploma)
+
+(The FBI hate crime rate (avg_hatecrimes_per_100k_fbi) is also available but has fewer
+missing values in the SPLC measure. SPLC is used primarily because it was highlighted 
+in the FiveThirtyEight analysis.)
+
+## Data Modifications
+
+No values are transformed. The data set is used as given by FiveThirtyEight
+with an exception. Four states have missing values for the SPLC hate crime rate
+(hate_crimes_per_100k_splc), which are left out from summaries that use this
+variable. No replacement was done, since the missing data represent less than 8% of
+observations and the leaving-out would likely not change the results.
+
+```{r missing-check, echo=FALSE}
+#finding states with missing SPLC hate crime rate
+hate_crimes %>%
+  filter(is.na(hate_crimes_per_100k_splc)) %>%
+  select(state, hate_crimes_per_100k_splc)
+```
+
+## Potential Issues 
+
+1. Under report: Hate crime statistics famously are affected by under-reporting. Many
+   cases go unreported, and reporting practices change by jurisdiction, meaning the true
+   prevalence may be higher or just unevenly captured across states.
+2. Ecological fallacy: These are state-level aggregates so associations observed here may not
+   hold at the individual level.
+3. Small N: With 51 observations, estimates can be sensitive to outliers.
+
+Although there are limitations, the data set is apt for the research question. It includes
+direct measures of both the outcome (hate crime rates) and the predictors of interest (income
+and education), and its state-level scope goes with the question of whether broad
+socioeconomic conditions relate to hate crime prevalence.
+
+# Exploratory Analysis
+
+```{r clean, include=FALSE}
+#making clean dataset (dropping rows that are missing SPLC outcome), adding state abbrev
+hc <- hate_crimes %>%
+  filter(!is.na(hate_crimes_per_100k_splc)) %>%
+  mutate(
+    state_abbrev = state.abb[match(state, state.name)],
+    state_abbrev = ifelse(state == "District of Columbia", "DC", state_abbrev)
+  )
+```
+
+## Numerical Summaries
+
+Table 1 presents summary statistics for the 3 variables of interest
+
+```{r numerical_summary}
+#summary stat for the 3 key variables
+summary(hc[, c("hate_crimes_per_100k_splc",
+               "median_household_income",
+               "share_population_with_high_school_degree")])
+```
+
+Correlation summary (Table 2): Pearson correlations between the hate crime rate and the two predictors
+
+```{r correlation_summary}
+#pearson correlation between hate crime rate and predictors
+cor_income <- cor(hc$hate_crimes_per_100k_splc, hc$median_household_income,
+                  use = "complete.obs")
+cor_edu    <- cor(hc$hate_crimes_per_100k_splc,
+                  hc$share_population_with_high_school_degree,
+                  use = "complete.obs")
+
+data.frame(
+  Predictor   = c("Median Household Income", "Share with HS Degree"),
+  Correlation = round(c(cor_income, cor_edu), 3)
+)
+```
+
+## Graphical Summaries
+
+Figure 1 shows distribution of state-level SPLC hate crime rates
+
+```{r fig1_histogram}
+#calc mean and median to annotate on the plot
+hc_mean   <- mean(hc$hate_crimes_per_100k_splc, na.rm = TRUE)
+hc_median <- median(hc$hate_crimes_per_100k_splc, na.rm = TRUE)
+
+ggplot(hc, aes(x = hate_crimes_per_100k_splc)) +
+  #draw histogram with fixed bin width
+  geom_histogram(binwidth = 0.1, fill = "dodgerblue2", color = "white", alpha = 0.85) +
+  #add vertical lines for mean and median
+  geom_vline(aes(xintercept = hc_mean,   color = "Mean"),   linetype = "dashed", linewidth = 0.9) +
+  geom_vline(aes(xintercept = hc_median, color = "Median"), linetype = "solid",  linewidth = 0.9) +
+  #set colors for the legend
+  scale_color_manual(name = "Measures",
+    values = c("Mean" = "tomato3", "Median" = "dodgerblue2")
+  ) +
+  labs(
+    title = "Figure 1: Distribution of Hate Crime Rates by State",
+    x     = "Hate Crimes per 100,000 Population",
+    y     = "Number of States"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+```
+
+Figure 2 plots hate crime rates against median household income, with each point labeled with abbrev.
+
+```{r fig2_scatter_income}
+ggplot(hc, aes(x = median_household_income, y = hate_crimes_per_100k_splc)) +
+  #plotting one point per state
+  geom_point(color = "dodgerblue2") +
+  #add linear trend line
+  geom_smooth(method = "lm", se = FALSE, color = "mistyrose2") +
+  #label each point with the state abbrev
+  geom_text(aes(label = state_abbrev), vjust = -0.6, size = 2.5) +
+  labs(
+    title = "Figure 2: Hate Crime Rate vs. Median Household Income",
+    x     = "Median Household Income ($)",
+    y     = "Hate Crimes per 100,000 (SPLC)"
+  ) +
+  theme_minimal()
+```
+
+Figure 3 plots hate crime rates against the share of adults with a high school degree
+
+```{r fig3_scatter_edu}
+ggplot(hc, aes(x = share_population_with_high_school_degree,
+               y = hate_crimes_per_100k_splc)) +
+  #one point per state
+  geom_point(color = "darkseagreen3") +
+  #adding linear trend line
+  geom_smooth(method = "lm", se = FALSE, color = "mistyrose2") +
+  #labelling each point with state abbrev
+  geom_text(aes(label = state_abbrev), vjust = -0.6, size = 2.5) +
+  labs(
+    title = "Figure 3: Hate Crime Rate vs. Share with High School Degree",
+    x     = "Share of Adults with HS Degree",
+    y     = "Hate Crimes per 100,000 (SPLC)"
+  ) +
+  theme_minimal()
+```
+
+# Conclusions
+
+The exploratory analysis reveals some interesting patterns between socioeconomic conditions and hate crime rates across U.S. states.
+
+The histogram (Figure 1) shows that the SPLC hate crime rate is right-skewed, with a mean of `r round(hc_mean, 3)` and a median of `r round(hc_median, 3)` per 100,000 people. The mean being larger than the median tells us that a few high-rate states are pulling the average up, while most states cluster at lower rates.
+
+Somewhat surprisingly, both income and education show weak positive correlations with hate crime rates (r = `r round(cor_income, 3)` and r = `r round(cor_edu, 3)` respectively). A positive correlation here means that as income or education increases, hate crime rates tend to slightly increase as well; the opposite of what we might expect. But both correlations are weak, which means neither variable explains much of the variation in hate crime rates on its own, as also visible in the spread around the trend lines in Figures 2 and 3.
+
+In the context of the research question, this suggests that higher income and education levels at the state level are not associated with lower hate crime rates. One likely explanation is under-reporting: wealthier / more educated states may have better infrastructure for reporting hate crimes, which inflates their recorded rates. Part 2 will test whether the difference in mean hate crime rates between states above and below median household income is statistically significant using a two-sample hypothesis test.
+
+\newpage
+
+# References
+
+Majumder, M. (2017, January 23). *Higher rates of hate crimes are tied to income inequality.*
+FiveThirtyEight. https://fivethirtyeight.com/features/higher-rates-of-hate-crimes-are-tied-to-income-inequality/
+
+FiveThirtyEight. (2017). *Hate crimes data* [Data set]. GitHub.
+https://github.com/fivethirtyeight/data/blob/master/hate-crimes/hate_crimes.csv
+
+Federal Bureau of Investigation. (2016). *Hate crime statistics, 2015.* U.S. Department of
+Justice. https://ucr.fbi.gov/hate-crime/2015
+
+Southern Poverty Law Center. (2016). *Update: Hate incidents in the days following the election.* https://www.splcenter.org/resources/hatewatch/update-incidents-hateful-harassment-election-day-now-number-701
+
+United States Census Bureau. (2016). *American Community Survey 5-year estimates.*
+https://www.census.gov/library/visualizations/interactive/acs-5year-datamap.html
+
+Gemini. (2026, April 8). Response to: "What are some ways that i could make a numerical summary between hate crime rate and predictors (median household income, high school degree)?" https://gemini.google.com/
